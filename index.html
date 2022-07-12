@@ -24,6 +24,23 @@ body.column {
 
 #left, #right {
     flex: 1;
+    position: relative;
+}
+
+#left-map, #right-map {
+    height: 100%;
+}
+
+#left-ghostcursor, #right-ghostcursor {
+    position: absolute;
+    pointer-events: none;
+    line-height: 0;
+    width: 0;
+    height: 0;
+    transform: rotate(72deg) translate(0, -2px);
+    font-size: 150%;
+    opacity: 30%;
+    visibility: hidden;
 }
 
 body:not(.column) #left {
@@ -78,8 +95,14 @@ body.column #left {
 
 </style>
 
-<div id="left"></div>
-<div id="right"></div>
+<div id="left">
+    <div id="left-map"></div>
+    <div id="left-ghostcursor">◄</div>
+</div>
+<div id="right">
+    <div id="right-map"></div>
+    <div id="right-ghostcursor">◄</div>
+</div>
 
 <div id="about">
     <details>
@@ -92,24 +115,21 @@ body.column #left {
 
 <script>
 
-// TODO:
-// [ ] mobile friendly plz
-// [ ] ghost cursors
-
-const targets = ['left', 'right'];
+const sides = ['left', 'right'];
 const views = {};
 const maps = {};
+const ghostCursors = {};
 
 const scaleControl = new ol.control.ScaleLine();
 
-targets.forEach((target) => {
-    views[target] = new ol.View({
+sides.forEach((side) => {
+    views[side] = new ol.View({
         center: [0, 0],
         zoom: 2,
         enableRotation: false,
     });
 
-    maps[target] = new ol.Map({
+    maps[side] = new ol.Map({
         layers: [
             new ol.layer.Tile({
                 source: new ol.source.XYZ({
@@ -127,28 +147,50 @@ targets.forEach((target) => {
                 autoComplete: true,
             })
         ],
-        target,
-        view: views[target],
+        target: `${side}-map`,
+        view: views[side],
     });
 
-    views[target].on('propertychange', () => {
-        const resolution = views[target].getResolution()
-        targets.forEach((otherTarget) => {
-            if (otherTarget !== target) {
+    views[side].on('propertychange', () => {
+        const resolution = views[side].getResolution()
+        sides.forEach((otherSide) => {
+            if (otherSide !== side) {
                 const newResolution =
                     resolution
-                    * Math.cos(ol.proj.toLonLat(views[target].getCenter())[1] / 180 * Math.PI)
-                    / Math.cos(ol.proj.toLonLat(views[otherTarget].getCenter())[1] / 180 * Math.PI);
-                if (Math.abs(views[otherTarget].getResolution() - newResolution) > 1e-6) {
-                    views[otherTarget].setResolution(newResolution);
+                    * Math.cos(ol.proj.toLonLat(views[side].getCenter())[1] / 180 * Math.PI)
+                    / Math.cos(ol.proj.toLonLat(views[otherSide].getCenter())[1] / 180 * Math.PI);
+                if (Math.abs(views[otherSide].getResolution() - newResolution) > 1e-6) {
+                    views[otherSide].setResolution(newResolution);
                 }
             }
         })
     });
 
-    if (target === 'left') {
-        maps[target].addControl(new ol.control.Zoom());
+    if (side === 'left') {
+        maps[side].addControl(new ol.control.Zoom());
     }
+
+    ghostCursors[side] = document.getElementById(`${side}-ghostcursor`);
+    document.getElementById(side).addEventListener('mousemove', (e) => {
+        const bbox = e.currentTarget.getBoundingClientRect();
+        const x = e.clientX - bbox.left;
+        const y = e.clientY - bbox.top;
+        sides.forEach((otherSide) => {
+            if (otherSide !== side) {
+                ghostCursors[otherSide].style.visibility = 'visible';
+                ghostCursors[otherSide].style.left = `${x}px`;
+                ghostCursors[otherSide].style.top = `${y}px`;
+            }
+        });
+        ghostCursors[side].style.visibility = 'hidden';
+    });
+    document.getElementById(side).addEventListener('mouseout', (e) => {
+        sides.forEach((otherSide) => {
+            if (otherSide !== side) {
+                ghostCursors[otherSide].style.visibility = 'hidden';
+            }
+        });
+    });
 })
 
 function onResize() {
